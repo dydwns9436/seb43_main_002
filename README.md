@@ -1,4 +1,4 @@
-![header](https://capsule-render.vercel.app/api?type=waving&color=auto&height=250&section=header&text=Sik:Gu&fontSize=100)
+![header](https://capsule-render.vercel.app/api?type=waving&color=F7D071&height=250&section=header&text=Sik:Gu&fontSize=100)
 
 ### 식 사할 사람
 ### 구 합니다
@@ -34,4 +34,4 @@
 	<img src="https://img.shields.io/badge/JavaScript-F7DF1E?style=flat&logo=JavaScript&logoColor=white" />
 </div>
 
-![footer](https://capsule-render.vercel.app/api?type=waving&color=auto&height=250&animation=twinkling&section=footer)
+![footer](https://capsule-render.vercel.app/api?type=waving&color=F7D071&height=250&animation=twinkling&section=footer)
