@@ -23,16 +23,16 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import javax.imageio.IIOImage;
+import javax.imageio.ImageIO;
+import javax.imageio.ImageWriteParam;
+import javax.imageio.ImageWriter;
+import javax.imageio.stream.ImageOutputStream;
 import javax.servlet.http.HttpServletResponse;
-import java.io.BufferedInputStream;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.IOException;
+import java.awt.image.BufferedImage;
+import java.io.*;
 import java.nio.file.Paths;
-import java.util.Comparator;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -66,20 +66,23 @@ public class MyPageService {
         myPageResponseDto.setEmail(myPage.getMember().getEmail());
 
         // 최근 작성한 게시물 2개를 가져와서 MyPageResponseDto에 설정
-        List<Board> recentBoards = myPage.getRecentPost();
-        recentBoards.sort(Comparator.comparing(Board::getCreatedAt).reversed());
+        List<Board> recentBoards = myPage.getRecentPost().stream()
+                .filter(board -> board.getBoardStatus() != Board.BoardStatus.DELETED_BOARD)
+                .sorted(Comparator.comparing(Board::getCreatedAt).reversed())
+                .limit(2)
+                .collect(Collectors.toList());
 
         List<MyPageRecentBoardDto> recentBoardList = recentBoards.stream()
-                .limit(2)
-                .map(Board -> {
+                .map(board -> {
                     MyPageRecentBoardDto myPageRecentBoardDto = new MyPageRecentBoardDto();
-                    myPageRecentBoardDto.setBoardId(Board.getBoardId());
-                    myPageRecentBoardDto.setTitle(Board.getTitle());
-                    myPageRecentBoardDto.setCreatedAt((Board.getCreatedAt().toLocalDate()));
+                    myPageRecentBoardDto.setBoardId(board.getBoardId());
+                    myPageRecentBoardDto.setTitle(board.getTitle());
+                    myPageRecentBoardDto.setCreatedAt(board.getCreatedAt().toLocalDate());
                     myPageRecentBoardDto.setType("식구");
                     return myPageRecentBoardDto;
                 })
                 .collect(Collectors.toList());
+
         myPageResponseDto.setRecentBoard(recentBoardList);
 
         List<FollowingDto> followingList = myPage.getFollowings().stream()
@@ -111,6 +114,24 @@ public class MyPageService {
         myPageResponseDto.setFollowings(followingList);
         myPageResponseDto.setFollowingCount(myPage.getFollowingCount());
         return myPageResponseDto;
+    }
+
+    // 팔로워 목록 조회
+    public List<MyPageFollowerDto> getMyFollower(Long myPageId) {
+        MyPage myPage = myPageRepository.findById(myPageId)
+                .orElseThrow(() -> new BusinessLogicException(ExceptionCode.MEMBER_NOT_FOUND, HttpStatus.NOT_FOUND));
+
+        List<MyPage> followerList = myPage.getFollowers();
+        List<MyPageFollowerDto> followerDtoList = new ArrayList<>();
+
+        for (MyPage follower : followerList) {
+            MyPageFollowerDto followerDto = new MyPageFollowerDto();
+            followerDto.setMyPageId(follower.getMyPageId());
+            followerDto.setNickName(follower.getMember().getNickname());
+            followerDtoList.add(followerDto);
+        }
+
+        return followerDtoList;
     }
 
     public String uploadMyPageImage(Long myPageId, MultipartFile file, Authentication authentication) throws IOException {
@@ -148,29 +169,33 @@ public class MyPageService {
             Optional.ofNullable(myPageRequestDto.getIntroduce())
                     .ifPresent(myPage::setIntroduce);
 
-            Optional.ofNullable(file)
-                    .ifPresent(updatedFile -> {
-                        String imagePath = "C:\\Users\\SYJ\\Desktop\\seb43_main_002\\Server\\src\\main\\resources\\static\\images";
-//                        String imagePath = "/home/ssm-user/sikgu/seb_main_002/Server/main/resources/static/images/";
 
-                        Image image = myPage.getImage();
-                        String imageName = image.getName();
+                Optional.ofNullable(file)
+                        .ifPresent(updatedFile -> {
+//                            String imagePath = "C:\\Users\\SYJ\\Desktop\\seb43_main_002\\Server\\src\\main\\resources\\static\\images";
+                        String imagePath = "/home/ssm-user/sikgu/seb43_main_002/Server/src/main/resources/static/images/";
 
-                        String newFileName = generateUniqueFileName(updatedFile.getOriginalFilename());
+                            Image image = myPage.getImage();
+                            String imageName = image.getName();
+                            String previousName = image.getOriginalFileName();
 
-                        image.setName(image.getImageId() + newFileName);
-                        image.setOriginalFileName(updatedFile.getOriginalFilename());
-                        image.setType(updatedFile.getContentType());
+                            String newFileName = generateUniqueFileName(updatedFile.getOriginalFilename());
 
-                        String filePath = Paths.get(imagePath, image.getImageId() + newFileName).toString();
-                        File f = new File(filePath);
-                        try {
-                            updatedFile.transferTo(f);
-                        } catch (IOException e) {
-                            throw new RuntimeException(e);
-                        }
-                        deletePreviousFile(imagePath, imageName);
-                    });
+                            image.setName(image.getImageId() + newFileName);
+                            image.setOriginalFileName(updatedFile.getOriginalFilename());
+                            image.setType(updatedFile.getContentType());
+
+                            String filePath = Paths.get(imagePath, image.getImageId() + newFileName).toString();
+                            File f = new File(filePath);
+                            try {
+                                updatedFile.transferTo(f);
+                            } catch (IOException e) {
+                                throw new RuntimeException(e);
+                            }
+                            if(!previousName.equals("기본이미지")) {
+                            deletePreviousFile(imagePath, imageName);
+                            }
+                        });
 
             Optional.ofNullable(myPageRequestDto.getNickname())
                     .ifPresent(nickname -> {
@@ -199,25 +224,48 @@ public class MyPageService {
     public void downloadImage(Long myPageId, HttpServletResponse response) {
         BufferedInputStream bin = null;
         try {
-            response.setContentType("image/jpeg");
-            Image image = imageRepository.findImageByMyPageId(myPageId);
+                response.setContentType("image/jpeg");
+                Image image = imageRepository.findImageByMyPageId(myPageId);
 
-            File file;
-            if (image != null && image.getName() != null) {
-                file = new File("C:\\Users\\SYJ\\Desktop\\seb43_main_002\\Server\\src\\main\\resources\\static\\images\\" + image.getName());
-//                file = new File("/home/ssm-user/sikgu/seb_main_002/Server/main/resources/static/images/" + image.getName());
-            } else {
-                file = new File("C:\\Users\\SYJ\\Desktop\\seb43_main_002\\Server\\src\\main\\resources\\static\\images\\image.jpg");
-//                file = new File("/home/ssm-user/sikgu/seb_main_002/Server/main/resources/static/images/" + image.getName());
-            }
-            bin = new BufferedInputStream(new FileInputStream(file));
+                File file;
+                if (image != null && image.getName() != null) {
+//                file = new File("C:\\Users\\SYJ\\Desktop\\seb43_main_002\\Server\\src\\main\\resources\\static\\images\\" + image.getName());
+                    file = new File("/home/ssm-user/sikgu/seb43_main_002/Server/src/main/resources/static/images/" + image.getName());
+                } else {
+//                file = new File("C:\\Users\\SYJ\\Desktop\\seb43_main_002\\Server\\src\\main\\resources\\static\\images\\image.jpg");
+                    file = new File("/home/ssm-user/sikgu/seb43_main_002/Server/src/main/resources/static/images/" + "4.jpeg");
+                }
+                bin = new BufferedInputStream(new FileInputStream(file));
 
-            byte[] dataBytes = new byte[8192];
-            int nread = 0;
-            while ((nread = bin.read(dataBytes)) != -1) {
-                response.getOutputStream().write(dataBytes, 0, nread);
-            }
+            // 이미지 읽기
+            BufferedImage bufferedImage = ImageIO.read(bin);
+
+            // 압축 설정
+            float compressionQuality = 0.1f; // 압축률 설정 (0.0f부터 1.0f까지의 범위)
+            // 이미지를 압축하여 바이트 배열로 변환
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            ImageWriter writer = ImageIO.getImageWritersByFormatName("jpeg").next();
+            ImageOutputStream ios = ImageIO.createImageOutputStream(baos);
+            writer.setOutput(ios);
+
+            // 압축 옵션 설정
+            ImageWriteParam param = writer.getDefaultWriteParam();
+            param.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
+            param.setCompressionQuality(compressionQuality);
+
+            // 이미지 압축
+            writer.write(null, new IIOImage(bufferedImage, null, null), param);
+
+            // 압축된 이미지를 클라이언트로 전송
+            response.getOutputStream().write(baos.toByteArray());
             response.getOutputStream().flush();
+////  구버전...압축 없음
+//                byte[] dataBytes = new byte[8192];
+//                int nread = 0;
+//                while ((nread = bin.read(dataBytes)) != -1) {
+//                    response.getOutputStream().write(dataBytes, 0, nread);
+//                }
+//                response.getOutputStream().flush();
         } catch (Exception e) {
             // 예외 처리 로직 추가
         } finally {

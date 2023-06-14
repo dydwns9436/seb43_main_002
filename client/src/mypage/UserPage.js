@@ -26,7 +26,7 @@ const UserPage = () => {
   const [isFollower, setIsFollower] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const accessToken = sessionStorage.getItem('jwt');
-  const imageUrl = `/api/mypages/${userId}/image`;
+  const imageUrl = `https://api.sik-gu.com/api/mypages/${userId}/image`;
 
   useEffect(() => {
     // const header = {
@@ -184,34 +184,38 @@ const UserPage = () => {
               </NewPosts>
               <History>
                 <h3>식구랑 먹었던 이력</h3>
-                <div className={data.review ? 'post' : ''}>
-                  {data.review ? (
-                    data.review.map((el, idx) => {
+                {data.recentReview.length !== 0 ? (
+                  <div className={data.review ? '' : 'post'}>
+                    {data.recentReview.slice(0, 4).map((el, idx) => {
+                      console.log(el);
                       return (
                         <div key={idx}>
-                          <img src={el.img} alt="프로필 이미지" />
+                          <img
+                            src={`https://api.sik-gu.com/api/mypages/${el.reviewerId}/image`}
+                            alt="프로필 이미지"
+                          />
                           <div>
                             <ul>
-                              <li>{el.name}</li>
-                              <li>{el.comment}</li>
+                              <li>{el.reviewerNickName}</li>
+                              <li>{el.reviewContent}</li>
                             </ul>
                           </div>
                           <button
                             onClick={() => {
-                              handleUser(el.id);
+                              handleUser(el.reviewerId);
                             }}
                           >
                             +
                           </button>
                         </div>
                       );
-                    })
-                  ) : (
-                    <NotFound>
-                      <div>식구랑 먹었던 이력이 존재하지 않습니다.</div>
-                    </NotFound>
-                  )}
-                </div>
+                    })}
+                  </div>
+                ) : (
+                  <NotFound>
+                    <div>식구랑 먹었던 이력이 존재하지 않습니다.</div>
+                  </NotFound>
+                )}
               </History>
             </>
           )
